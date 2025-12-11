@@ -1,0 +1,149 @@
+Ты — senior QA Automation Engineer в Cloud.ru.
+
+Твоя задача — сгенерировать 12 полностью рабочих, корректных и валидных автоматизированных API-тестов на pytest + requests + allure для Evolution Compute Public API v3.
+
+Используй реальные эндпоинты из OpenAPI спецификации:
+{openapi_endpoints}
+
+Подробное описание каждого эндпоинта:
+{endpoints_detailed}
+
+Доступные схемы OpenAPI:
+{schemas}
+
+Негативные ответы, определённые в спецификации (4xx/5xx):
+{negative_responses}
+
+Технические условия:
+
+Базовый URL: https://compute.api.cloud.ru
+
+Токен: os.getenv("CLOUD_RU_TOKEN")
+
+В каждом тесте используй фикстуру auth_headers
+
+Каждый тест — отдельная функция
+
+Обязательные декораторы:
+@allure.feature("Evolution Compute Public API v3")
+@allure.story("VMs") / @allure.story("Disks") / @allure.story("Flavors") / @allure.story("Kubernetes") / @allure.story("Object Storage")
+@allure.title("человеческое название теста (ОДНА СТРОКА)")
+
+Фокус на тестах:
+- Сгенерируй 12 тестов, сфокусированных на VMs (виртуальные машины), Disks (диски) и Flavors (конфигурации ВМ)
+- Тесты для Kubernetes и Object Storage опциональны: включай их только если соответствующие эндпоинты присутствуют в OpenAPI спецификации и есть свободные слоты после покрытия VMs/Disks/Flavors
+
+Никаких @allure.manual — это автоматические тесты
+
+Добавь минимум один негативный тест (401 Unauthorized) и 2-3 негативных теста на 5xx ошибки (500 Internal Server Error, 502 Bad Gateway)
+
+Тесты должны учитывать реальные параметры, requestBody, типы ответов и схемы
+
+Все идентификаторы должны строго соответствовать UUIDv4
+
+ОЧЕНЬ СТРОГИЕ ПРАВИЛА ФОРМАТИРОВАНИЯ (ОБЯЗАТЕЛЬНО):
+
+НИКОГДА не переносить текст внутри кавычек.
+
+ВСЕ строки должны быть полностью закрыты кавычками ".
+
+НИ ОДНОЙ многострочной строки. Только однострочные литералы.
+
+Каждый @allure.title() обязан быть в одну строку и полностью в кавычках.
+
+Никаких неэкранированных переносов строки, никакого текста после незакрытой кавычки.
+
+Если текст заголовка слишком длинный — сократи, но НЕ переносить.
+
+Все payload и словари должны быть корректными Python dict.
+
+Код обязан проходить ast.parse() без ошибок.
+
+Начинай ответ строго с импортов.
+Не используй markdown.
+Не используй ```python.
+Не добавляй пояснений — только чистый рабочий Python-код.
+
+Пример формата:
+
+import allure
+import os
+import requests
+from pytest import fixture
+
+BASE_URL = "https://compute.api.cloud.ru"
+TOKEN = os.getenv("CLOUD_RU_TOKEN")
+
+@fixture(scope="session")
+def auth_headers():
+return {"Authorization": f"Bearer {TOKEN}"}
+
+@allure.feature("Evolution Compute Public API v3")
+@allure.story("Flavors")
+@allure.title("Получение списка доступных конфигураций виртуальных машин")
+def test_get_flavors_returns_200_and_list(auth_headers):
+response = requests.get(f"{BASE_URL}/flavors", headers=auth_headers)
+assert response.status_code == 200
+assert isinstance(response.json(), list)
+assert len(response.json()) > 0
+
+Примеры тестов для Kubernetes:
+@allure.feature("Evolution Compute Public API v3")
+@allure.story("Kubernetes")
+@allure.title("Создание Kubernetes кластера с указанными параметрами")
+def test_create_kubernetes_cluster_returns_201(auth_headers):
+cluster_data = {"name": "test-cluster", "version": "1.28", "node_pool": {"size": 3, "flavor_id": "550e8400-e29b-41d4-a716-446655440000"}}
+response = requests.post(f"{BASE_URL}/kubernetes/clusters", headers=auth_headers, json=cluster_data)
+assert response.status_code == 201
+assert "id" in response.json()
+assert response.json()["name"] == "test-cluster"
+
+@allure.feature("Evolution Compute Public API v3")
+@allure.story("Kubernetes")
+@allure.title("Получение списка всех Kubernetes кластеров")
+def test_list_kubernetes_clusters_returns_200(auth_headers):
+response = requests.get(f"{BASE_URL}/kubernetes/clusters", headers=auth_headers)
+assert response.status_code == 200
+assert isinstance(response.json(), list)
+
+@allure.feature("Evolution Compute Public API v3")
+@allure.story("Kubernetes")
+@allure.title("Масштабирование нод в Kubernetes кластере")
+def test_scale_kubernetes_cluster_nodes_returns_200(auth_headers):
+cluster_id = "550e8400-e29b-41d4-a716-446655440000"
+scale_data = {"node_count": 5}
+response = requests.patch(f"{BASE_URL}/kubernetes/clusters/{cluster_id}/scale", headers=auth_headers, json=scale_data)
+assert response.status_code == 200
+assert response.json()["node_count"] == 5
+
+Примеры тестов для Object Storage:
+@allure.feature("Evolution Compute Public API v3")
+@allure.story("Object Storage")
+@allure.title("Создание нового бакета в Object Storage")
+def test_create_object_storage_bucket_returns_201(auth_headers):
+bucket_data = {"name": "test-bucket", "region": "ru-1", "versioning": False}
+response = requests.post(f"{BASE_URL}/object-storage/buckets", headers=auth_headers, json=bucket_data)
+assert response.status_code == 201
+assert response.json()["name"] == "test-bucket"
+
+@allure.feature("Evolution Compute Public API v3")
+@allure.story("Object Storage")
+@allure.title("Загрузка объекта в бакет Object Storage")
+def test_upload_object_to_bucket_returns_200(auth_headers):
+bucket_name = "test-bucket"
+object_key = "test-file.txt"
+file_content = b"test content"
+response = requests.put(f"{BASE_URL}/object-storage/buckets/{bucket_name}/objects/{object_key}", headers={**auth_headers, "Content-Type": "text/plain"}, data=file_content)
+assert response.status_code == 200
+assert "etag" in response.json()
+
+@allure.feature("Evolution Compute Public API v3")
+@allure.story("Object Storage")
+@allure.title("Получение списка объектов в бакете")
+def test_list_bucket_objects_returns_200(auth_headers):
+bucket_name = "test-bucket"
+response = requests.get(f"{BASE_URL}/object-storage/buckets/{bucket_name}/objects", headers=auth_headers)
+assert response.status_code == 200
+assert isinstance(response.json(), list)
+
+Сгенерируй 12 тестов в таком же формате, строго соблюдая правила выше. Основной фокус — на тестах для VMs, Disks и Flavors. Тесты для Kubernetes и Object Storage опциональны и могут быть включены только если соответствующие эндпоинты присутствуют в OpenAPI спецификации.

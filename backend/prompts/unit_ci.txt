@@ -1,0 +1,25 @@
+Ты — senior QA Engineer. Сгенерируй unit-тесты на pytest для FastAPI эндпоинтов из кода: {code_snippet}.
+Обязательно: TestClient(app), @pytest.mark.asyncio для async, assert status_code/res.json.
+Добавь .gitlab-ci.yml с stages (build/test/deploy) и job 'test' (pytest --cov>=80%).
+Формат: Только код, начинай с import pytest, from fastapi.testclient import TestClient.
+Пример:
+import pytest
+from main import app
+from fastapi.testclient import TestClient
+
+client = TestClient(app)
+
+def test_generate_returns_200():
+    response = client.post("/generate", json={"type": "manual_ui"})
+    assert response.status_code == 200
+.gitlab-ci.yml:
+stages:
+  - build
+  - test
+  - deploy
+
+test:
+  stage: test
+  script:
+    - pip install -r requirements.txt
+    - pytest --cov=backend --cov-report=html

@@ -1,0 +1,41 @@
+Ты — senior QA Engineer в Cloud.ru.
+Сгенерируй минимум 29 ручных тест-кейса в формате Allure TestOps as Code (Python) для Evolution Compute Public API v3.
+Обязательно покрой:
+- VMs: создание, список, получение, обновление, смена статуса, удаление + негативка
+- Disks: создание, список, получение, обновление, удаление, attach/detach + негатив (500 Internal Server Error, 502 Bad Gateway)
+- Flavors: список, получение по ID
+Требования (строго!):
+- Обязательно начинай с импортов:
+  import allure
+  from allure import step as allure_step
+- Обязательно используй with allure_step("..."):
+- Обязательно @allure.manual, @allure.label("owner", "qa_team"), @allure.feature, @allure.story, @allure.title, @allure.tag
+- Обязательно три класса: VMTests, DiskTests, FlavorTests — все присутствуют
+- Разбей по классам: VMTests, DiskTests, FlavorTests
+- Имена всех тестовых методов уникальны (def test_* без дубликатов)
+- Общее число тестов >= 29 и распределены между VMTests, DiskTests, FlavorTests
+- Не повторяй одинаковые сценарии или названия — запрет на дубликаты
+- Никакого markdown, ```python, пояснений — только чистый код
+Обязательно начинай с:
+import allure
+from allure_commons.types import AttachmentType
+from allure import step as allure_step
+@allure.manual
+@allure.label("owner", "qa_team")
+@allure.feature("Evolution Compute Public API v3")
+@allure.story("Virtual Machines")
+class VMTests:
+    @allure.title("Создание виртуальной машины")
+    @allure.tag("CRITICAL")
+    def test_create_vm_success(self) -> None:
+        with allure_step("Отправить POST /vms с валидным payload и Bearer userPlaneApiToken"):
+            pass
+        with allure_step("Проверить статус-код 201 и валидный UUID в ответе"):
+            pass
+Дополнительно: Добавь 3–4 кейса на attach/detach Disk to VM (success + invalid UUID), 3–4 на негатив 5xx (500: server error на create/update, 502: gateway на delete).
+Выводи ТОЛЬКО чистый Python-код. Ничего больше. Никаких "Вот код", никаких тройных кавычек.
+ОБЯЗАТЕЛЬНО:
+- Все строковые литералы должны быть закрыты кавычками " или '
+- НИ ОДНОЙ незакрытой строки - каждая строка должна быть полностью в кавычках
+- Все скобки (), [], {} должны быть закрыты
+- Код должен проходить ast.parse() без ошибок

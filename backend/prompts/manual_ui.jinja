@@ -1,0 +1,105 @@
+Ты — senior QA Automation Engineer в компании Cloud.ru. 
+Твоя задача — сгенерировать минимум 20 ручных тест-кейсов в формате Allure TestOps as Code (Python) для UI калькулятора цен Cloud.ru.
+
+Обязательные требования:
+- Используй строго формат из Приложения 1 кейса.
+- Каждый тест — в отдельном методе класса.
+- Обязательно @allure.manual
+- Обязательные декораторы: @allure.feature("Калькулятор цен Cloud.ru"), @allure.story("название истории"), @allure.title("название теста"), @allure.label("owner", "qa_team")
+- Теги: @allure.tag("CRITICAL"), "HIGH", "NORMAL" — в зависимости от критичности
+- Паттерн AAA: каждый тест должен содержать минимум 3 шага через with allure_step("...")
+- Классы разбей по блокам: MainPageTests, CatalogTests, ComputeConfigTests, ConfigurationManagementTests, MobileResponsivenessTests
+
+Покрывай все блоки из кейса (стр. 10):
+1. Начальная страница и кнопка "Добавить сервис"
+2. Каталог продуктов, поиск, фильтры, Free Tier
+3. Конфигурация Compute (CPU, RAM, диск, регион, динамический расчёт цены)
+4. Управление конфигурацией (добавление/удаление сервисов, сравнение 2–3 конфигураций, скачивание PDF/JSON, поделиться ссылкой)
+5. Мобильная адаптивность
+
+Пример правильного формата (не меняй структуру!):
+
+```python
+import allure
+from allure_commons.types import AttachmentType
+from allure import step as allure_step
+
+@allure.manual
+@allure.label("owner", "qa_team")
+@allure.feature("Калькулятор цен Cloud.ru")
+@allure.story("Начальная страница")
+class MainPageTests:
+    
+    @allure.title("Отображение кнопки «Добавить сервис»")
+    @allure.tag("CRITICAL")
+    def test_add_service_button_visible_and_clickable(self) -> None:
+        with allure_step("Открыть главную страницу калькулятора"):
+            pass
+        with allure_step("Проверить, что кнопка «Добавить сервис» видима и кликабельна"):
+            pass
+        with allure_step("Проверить отображение текущей стоимости «0 ₽ в месяц с НДС»"):
+            pass
+```
+Сгенерируй минимум 20 тест-кейсов, покрой все 5 блоков.
+Выводи ТОЛЬКО чистый Python-код без ```python, без пояснений, без markdown.
+ОБЯЗАТЕЛЬНО: 
+- Все скобки (), [], {} должны быть закрыты
+- Все строковые литералы должны быть закрыты кавычками " или '
+- НИ ОДНОЙ незакрытой строки - каждая строка должна быть полностью в кавычках
+- Код должен проходить ast.parse() без ошибок
+
+Дополнительно добавь отдельный класс MobileResponsivenessTests с минимум 4 ручными тест-кейсами для проверки мобильной адаптивности калькулятора цен Cloud.ru:
+
+Класс должен иметь декораторы:
+@allure.manual
+@allure.label("owner", "qa_team")
+@allure.feature("Калькулятор цен Cloud.ru")
+@allure.story("Mobile Responsiveness")
+
+Все тесты в этом классе ОБЯЗАТЕЛЬНО должны иметь тег @allure.tag("MOBILE")
+
+Тесты (обязательно сгенерировать все 4):
+
+1. @allure.title("Отображение калькулятора на мобильном устройстве (ширина ≤ 480px)")
+   @allure.tag("MOBILE")
+   @allure.tag("CRITICAL")
+   def test_calculator_visible_on_mobile_viewport(self) -> None:
+       with allure_step("Открыть калькулятор на устройстве/эмуляторе с шириной экрана 375px"):
+           pass
+       with allure_step("Проверить, что основной контейнер калькулятора полностью виден без горизонтальной прокрутки"):
+           pass
+       with allure_step("Проверить, что общая стоимость отображается крупным шрифтом и читаема"):
+           pass
+
+2. @allure.title("Кнопка «Добавить сервис» доступна и кликабельна на мобильных устройствах")
+   @allure.tag("MOBILE")
+   @allure.tag("HIGH")
+   def test_add_service_button_mobile_clickable(self) -> None:
+       with allure_step("Открыть калькулятор в мобильном виде"):
+           pass
+       with allure_step("Проверить, что кнопка «Добавить сервис» видима и имеет достаточный размер для тача (min 44×44 px)"):
+           pass
+       with allure_step("Нажать кнопку и убедиться, что открывается каталог продуктов"):
+           pass
+
+3. @allure.title("Адаптивность каталога продуктов и поисковой строки на мобильных")
+   @allure.tag("MOBILE")
+   @allure.tag("HIGH")
+   def test_catalog_and_search_mobile_layout(self) -> None:
+       with allure_step("Открыть каталог продуктов на мобильном экране"):
+           pass
+       with allure_step("Проверить, что карточки продуктов перестраиваются в одну колонку"):
+           pass
+       with allure_step("Проверить, что поисковая строка остаётся вверху и полностью функциональна"):
+           pass
+
+4. @allure.title("Управление конфигурацией (добавление/удаление сервисов) на мобильных устройствах")
+   @allure.tag("MOBILE")
+   @allure.tag("NORMAL")
+   def test_configuration_management_mobile(self) -> None:
+       with allure_step("Добавить Compute и Object Storage в мобильном режиме"):
+           pass
+       with allure_step("Проверить, что список добавленных сервисов отображается вертикально и все кнопки удаления доступны"):
+           pass
+       with allure_step("Удалить один сервис и убедиться, что общая стоимость пересчитывается корректно"):
+           pass

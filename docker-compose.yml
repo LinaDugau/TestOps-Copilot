@@ -1,0 +1,15 @@
+name: testops-copilot
+
+services:
+  app:
+    build: .
+    ports:
+      - "80:80"
+    env_file:
+      - backend/.env
+    environment:
+      - CLOUD_RU_API_KEY=${CLOUD_RU_API_KEY:-}
+      - CLOUD_RU_MODEL=${CLOUD_RU_MODEL:-Qwen/Qwen3-Next-80B-A3B-Instruct}
+    container_name: testops-copilot
+    restart: unless-stopped
+
