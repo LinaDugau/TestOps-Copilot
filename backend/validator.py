@@ -57,7 +57,7 @@ def validate_allure_code(code: str, test_type: str = "manual_ui") -> dict:
 
         # --- link check ---
         if not re.search(r"@allure\.link\s*\(\s*['\"]https?://", code):
-            issues.append("Рекомендуется добавить @allure.link(...) на документацию или Jira-задачу")
+            issues.append("Рекомендуется добавить @allure.link(...) на документацию, GitLab Issue или внешнюю задачу")
 
         # --- priority check ---
         priority_match = re.search(r'@allure\.label\(\s*[\'"]priority[\'"]\s*,\s*[\'"](.+?)[\'"]\s*\)', code)

@@ -168,7 +168,7 @@ function App() {
     { value: 'auto_ui', label: 'Автоматические e2e UI тесты (Playwright + pytest)' },
     { value: 'auto_api', label: 'Автоматические API тесты (pytest + requests + allure)' },
     { value: 'test_plan', label: 'Генератор тест-плана (MVP v1.1)' },
-    { value: 'optimize', label: 'Оптимизация тестов (дубли, покрытие, полный код!)' },
+    { value: 'optimize', label: 'Оптимизация тестов (дубли, покрытие, полный код)' },
     { value: 'unit_ci', label: 'Unit-тесты для CI/CD (pytest + .gitlab-ci.yml)' },
   ];
 
