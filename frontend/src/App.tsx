@@ -180,18 +180,31 @@ function App() {
       originalName: item.name,
     };
 
-    setEditingPrompt(basePayload);
-    setEditDialogOpen(true);
-
     if (item.type && !item.isCustom) {
       const edited = editedBuiltinPrompts.find((p) => p.type === item.type);
       if (edited) {
-        setEditingPrompt((prev) => (prev ? { ...prev, prompt: edited.prompt } : prev));
+        setEditingPrompt({ ...basePayload, prompt: edited.prompt });
+        setEditDialogOpen(true);
         return;
       }
-      const original = await loadOriginalPrompt(item.type);
-      setEditingPrompt((prev) => (prev ? { ...prev, prompt: original } : prev));
+      try {
+        const original = await loadOriginalPrompt(item.type);
+        if (!original) {
+          setError(`Не удалось загрузить промпт для ${item.name}. Проверьте подключение к серверу.`);
+        }
+        setEditingPrompt({ ...basePayload, prompt: original || '' });
+        setEditDialogOpen(true);
+      } catch (err) {
+        console.error('Ошибка при загрузке оригинального промпта:', err);
+        setError(`Ошибка при загрузке промпта: ${err instanceof Error ? err.message : 'Неизвестная ошибка'}`);
+        setEditingPrompt({ ...basePayload, prompt: '' });
+        setEditDialogOpen(true);
+      }
+      return;
     }
+
+    setEditingPrompt(basePayload);
+    setEditDialogOpen(true);
   };
 
   const handleSaveEdit = () => {
