@@ -4,9 +4,7 @@ from typing import List, Dict
 from dotenv import load_dotenv
 import traceback
 
-# Загружаем .env из backend директории
-_env_path = os.path.join(os.path.dirname(__file__), ".env")
-load_dotenv(_env_path)
+load_dotenv()
 
 DEFAULT_MODEL = "Qwen/Qwen3-Next-80B-A3B-Instruct"
 
@@ -16,18 +14,16 @@ api_key = (
     os.getenv("OPENAI_API_KEY")
 )
 
-# Создаем клиент только если есть API ключ
-if api_key:
-    client = AsyncOpenAI(
-        api_key=api_key,
-        base_url="https://foundation-models.api.cloud.ru/v1",
-        timeout=90.0,
-        max_retries=3,  
-        default_headers={"Authorization": f"Bearer {api_key}"},  
-    )
-else:
-    client = None
-    print("⚠️  ВНИМАНИЕ: CLOUD_RU_API_KEY не установлен. Функции генерации тестов будут недоступны.")
+if not api_key:
+    raise OSError("Static API Key не найден! Сгенерируй в Cloud.ru Console → API Keys (Bearer token)")
+
+client = AsyncOpenAI(
+    api_key=api_key,
+    base_url="https://foundation-models.api.cloud.ru/v1",
+    timeout=90.0,
+    max_retries=3,  
+    default_headers={"Authorization": f"Bearer {api_key}"},  
+)
 
 async def call_evolution(
     messages: List[Dict[str, str]],
@@ -39,9 +35,6 @@ async def call_evolution(
     Вызов Cloud.ru Evolution Foundation Model (Qwen 3 Next 80B).
     OpenAI-compatible API по документации.
     """
-    if not client or not api_key:
-        raise OSError("CLOUD_RU_API_KEY не установлен! Установите переменную окружения CLOUD_RU_API_KEY для использования функций генерации.")
-    
     target_model = model or os.getenv("CLOUD_RU_MODEL") or DEFAULT_MODEL
 
     try:

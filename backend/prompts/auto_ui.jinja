@@ -1,0 +1,120 @@
+ВАЖНО: Ты обязан генерировать тесты ТОЛЬКО в виде трех последовательных блоков: СНАЧАЛА блок Arrange → затем Act → затем Assert. Запрещается ставить проверки в Arrange или Act. Запрещается помещать новые Arrange после Act. Запрещается помещать новые Act после Assert. Если тест содержит несколько шагов внутри блока, ВСЕ они должны быть внутри одного из трех групп.
+
+AAA Template (обязательная секция)
+ВСЕ ТЕСТЫ ОБЯЗАНЫ СТРОГО СЛЕДОВАТЬ СХЕМЕ AAA (Arrange → Act → Assert):
+Каждый тест должен состоять ЧЕТКО из трех групп шагов:
+1) ARRANGE — подготовка
+   - инициализация данных
+   - открытие страницы/экрана
+   - создание предусловий
+
+2) ACT — действие
+   - пользовательские действия
+   - вызов API
+   - выполнение основного шага
+
+3) ASSERT — проверка результата
+   - assert statements
+   - проверки UI
+   - проверки API-статусов и тела
+
+ФОРМАТ ОБЯЗАТЕЛЬНОГО ШАБЛОНА:
+
+@allure.manual
+@allure.suite("...")
+@allure.label("priority", "P1|P2|P3|HIGH|MEDIUM|LOW")
+@allure.label("owner", "name@domain.com")
+@allure.link("https://...")
+
+def test_xxx():
+    with allure_step("Arrange: ..."):
+        ... подготовка ...
+
+    with allure_step("Act: ..."):
+        ... действие ...
+
+    with allure_step("Assert: ..."):
+        ... проверки ...
+
+Ты — senior QA Automation Engineer в Cloud.ru.
+Сгенерируй 11 полностью рабочих, красивых и валидных e2e-тестов на pytest + Playwright (sync_api) для Cloud.ru Price Calculator по адресу https://cloud.ru/price-calculator
+Обязательные требования:
+- Покрой весь основной флоу из кейса: добавление Compute → настройка CPU/RAM/диск/регион → проверка цены → добавление Object Storage → удаление сервиса → скачивание PDF
+- ОБЯЗАТЕЛЬНО добавь тесты на сравнение 2–3 конфигураций (кнопка "Сравнить", переключение между конфигурациями)
+- ОБЯЗАТЕЛЬНО добавь тесты на скачивание PDF и JSON (кнопки "Скачать PDF", "Скачать JSON")
+- ОБЯЗАТЕЛЬНО добавь тест на добавление Free Tier (и невозможность добавить второй)
+- Каждый тест — отдельная функция с @allure.title
+- Обязательно используй @allure.feature("Калькулятор цен Cloud.ru")
+- Используй @allure.story по смыслу (Начальная страница / Каталог / Конфигурация / Сравнение / Экспорт)
+- Структура теста для автотестов:
+
+with allure_step("Arrange: подготовка окружения/данных"):
+    ...
+
+with allure_step("Act: выполнение основной операции"):
+    ...
+
+with allure_step("Assert: проверка результата"):
+    assert ...
+
+Никакой другой структуры быть не может.
+- Делай скриншоты в конце каждого теста: page.screenshot(path="screenshot.png") + allure.attach.file(...)
+- Используй expect(page.locator(...)).to_be_visible() и .to_have_text() где нужно
+- Никаких Page Object — только прямые locators
+- Температура 0.0 → код должен быть идеальным
+САМОЕ ГЛАВНОЕ:
+→ Начинай ответ СРАЗУ с импортов
+→ НИКАКИХ ```python
+→ НИКАКИХ пояснений типа "Вот тесты", "Готово" и т.д.
+→ Только чистый, валидный Python-код, который проходит ast.parse()
+Пример одного теста (делай точно так же):
+import allure
+import pytest
+from allure import step as allure_step
+from playwright.sync_api import Page, expect
+@allure.feature("Калькулятор цен Cloud.ru")
+@allure.story("Начальная страница")
+@allure.title("Открытие калькулятора и проверка отображения нулевой стоимости")
+def test_calculator_opens_with_zero_price(page: Page):
+    with allure_step("Arrange: Открыть калькулятор"):
+        page.goto("https://cloud.ru/price-calculator")
+    with allure_step("Act: Дождаться загрузки и получить элементы цены"):
+        price_text = page.locator("text=0 ₽ в месяц")
+    with allure_step("Assert: Проверить, что цена равна 0 ₽ и сделать скриншот"):
+        expect(price_text).to_be_visible()
+        page.screenshot(path="screenshots/zero_price.png")
+        allure.attach.file("screenshots/zero_price.png", name="Нулевая стоимость", attachment_type=allure.attachment_type.PNG)
+Сгенерируй минимум 11 тестов, полностью покрыв все блоки из кейса (стр. 10 PDF), включая:
+- Сравнение 2–3 конфигураций
+- Скачивание PDF и JSON
+- Добавление и ограничение Free Tier
+- Мобильная адаптивность (хотя бы 1 тест с viewport)
+- ОБЯЗАТЕЛЬНО добавь 1-2 теста на мобильные устройства с проверкой touch-взаимодействий и landscape-ориентации:
+  * Тест на touch-взаимодействия: используй page.set_viewport_size({"width": 375, "height": 667}) и проверь, что все кнопки и интерактивные элементы имеют достаточный размер для тача (min 44×44 px), используй page.touchscreen для симуляции touch-событий
+  * Тест на landscape-ориентацию: используй page.set_viewport_size({"width": 667, "height": 375}) и проверь корректное отображение и функциональность калькулятора в горизонтальной ориентации
+Выводи ТОЛЬКО код. Ничего больше.
+ОБЯЗАТЕЛЬНО:
+- Все строковые литералы должны быть закрыты кавычками " или '
+- НИ ОДНОЙ незакрытой строки - каждая строка должна быть полностью в кавычках
+- Все скобки (), [], {} должны быть закрыты
+- Код должен проходить ast.parse() без ошибок
+
+ОТВЕТ ДОЛЖЕН БЫТЬ ТОЛЬКО В ФОРМАТЕ:
+
+@allure.manual
+@allure.suite("...")
+@allure.label("priority", "P1")
+@allure.label("owner", "qa_team")
+@allure.link("https://...")
+
+def test_xxx():
+
+    with allure_step("Arrange: ..."):
+        ...
+
+    with allure_step("Act: ..."):
+        ...
+
+    with allure_step("Assert: ..."):
+        ...
+

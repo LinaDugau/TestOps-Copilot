@@ -1,41 +1,158 @@
+ВАЖНО: Ты обязан генерировать тесты ТОЛЬКО в виде трех последовательных блоков: СНАЧАЛА блок Arrange → затем Act → затем Assert. Запрещается ставить проверки в Arrange или Act. Запрещается помещать новые Arrange после Act. Запрещается помещать новые Act после Assert. Если тест содержит несколько шагов внутри блока, ВСЕ они должны быть внутри одного из трех групп.
+
+AAA Template (обязательная секция)
+ВСЕ ТЕСТЫ ОБЯЗАНЫ СТРОГО СЛЕДОВАТЬ СХЕМЕ AAA (Arrange → Act → Assert):
+Каждый тест должен состоять ЧЕТКО из трех групп шагов:
+1) ARRANGE — подготовка
+   - инициализация данных
+   - открытие страницы/экрана
+   - создание предусловий
+
+2) ACT — действие
+   - пользовательские действия
+   - вызов API
+   - выполнение основного шага
+
+3) ASSERT — проверка результата
+   - assert statements
+   - проверки UI
+   - проверки API-статусов и тела
+
+ФОРМАТ ОБЯЗАТЕЛЬНОГО ШАБЛОНА:
+
+@allure.manual
+@allure.suite("...")
+@allure.label("priority", "P1|P2|P3|HIGH|MEDIUM|LOW")
+@allure.label("owner", "name@domain.com")
+@allure.link("https://...")
+
+def test_xxx():
+    with allure_step("Arrange: ..."):
+        ... подготовка ...
+
+    with allure_step("Act: ..."):
+        ... действие ...
+
+    with allure_step("Assert: ..."):
+        ... проверки ...
+
 Ты — senior QA Engineer в Cloud.ru.
-Сгенерируй минимум 29 ручных тест-кейса в формате Allure TestOps as Code (Python) для Evolution Compute Public API v3.
-Обязательно покрой:
-- VMs: создание, список, получение, обновление, смена статуса, удаление + негативка
-- Disks: создание, список, получение, обновление, удаление, attach/detach + негатив (500 Internal Server Error, 502 Bad Gateway)
-- Flavors: список, получение по ID
+Сгенерируй 25–35 ручных тест-кейсов в формате Allure TestOps as Code (Python) для Evolution Compute Public API v3.
+Обязательно покрой все эндпоинты только из разделов VMs, Disks, Flavors:
+Блок 1. VMs (Virtual Machines)
+- Список ВМ
+- Создание ВМ
+- Получение ВМ по id
+- Обновление ВМ
+- Смена статуса ВМ (start/stop/reboot по OpenAPI)
+- Удаление ВМ
+Блок 2. Disks
+- Список дисков
+- Создание диска
+- Получение диска по id
+- Обновление диска
+- Удаление диска
+- Подключение диска к ВМ (attach)
+- Отключение диска от ВМ (detach)
+Блок 3. Flavors
+- Список флейворов
+- Получение флейвора по id
+Общие условия:
+- Все запросы требуют Bearer-токен userPlaneApiToken (укажи в Arrange, использовать заглушку/фикстуру).
+- Все идентификаторы — UUIDv4 (валидность проверять).
+- Ошибочные ответы оформлены по *ExceptionSchema (код + сообщение).
+- Никаких других разделов (Kubernetes/Object Storage) — исключить.
 Требования (строго!):
 - Обязательно начинай с импортов:
   import allure
   from allure import step as allure_step
-- Обязательно используй with allure_step("..."):
-- Обязательно @allure.manual, @allure.label("owner", "qa_team"), @allure.feature, @allure.story, @allure.title, @allure.tag
+- Все тест-кейсы должны иметь следующую структуру:
+
+### ARRANGE (подготовка)
+- подготовка данных
+- переход в нужный раздел / сервис
+- подготовка окружения и предусловий
+
+### ACT (действия)
+- вызов API
+- выполнение основной операции
+
+### ASSERT (проверки)
+- валидировать статус
+- проверять тело ответа
+- assert условий
+
+Каждый из трех блоков обязан быть оформлен в виде отдельного:
+with allure_step("Arrange: ..."):
+with allure_step("Act: ..."):
+with allure_step("Assert: ..."):
+
+- Обязательно @allure.manual, @allure.suite(...), @allure.label("priority", ...), @allure.label("owner", ...), @allure.feature, @allure.story, @allure.title, @allure.tag
 - Обязательно три класса: VMTests, DiskTests, FlavorTests — все присутствуют
 - Разбей по классам: VMTests, DiskTests, FlavorTests
 - Имена всех тестовых методов уникальны (def test_* без дубликатов)
-- Общее число тестов >= 29 и распределены между VMTests, DiskTests, FlavorTests
+- Общее число тестов 25–35 и распределены между VMTests, DiskTests, FlavorTests
 - Не повторяй одинаковые сценарии или названия — запрет на дубликаты
 - Никакого markdown, ```python, пояснений — только чистый код
+Логическая связность (обязательно):
+- Arrange подготавливает данные/URL/токены, Act выполняет ровно эту операцию, Assert проверяет результат Act.
+- Если связность нарушена — перегенерируй конкретный тест.
+Запрет на pass:
+- Нельзя использовать pass. Каждый шаг содержит реальное действие или заготовку с присваиванием/проверкой (payload, headers, assert).
+Защита от галлюцинаций:
+- Нельзя упоминать эндпоинты, параметры или поля, которых нет в OpenAPI спецификации.
+- Любой payload/response должен соответствовать схемам из OpenAPI (UUIDv4, типы, обязательные поля).
+Самопроверка в конце генерации (обязательно выполнить):
+- Нет дубликатов тестов и названий?
+- AAA-структура соблюдена в каждом тесте?
+- Нет случайных переносов строки, все кавычки закрыты?
+- Количество тестов в диапазоне 25–35 и по классам?
+- Нет лишних классов?
+Если обнаружена ошибка — перегенерируй только ошибочный тест, остальные не трогай.
 Обязательно начинай с:
 import allure
 from allure_commons.types import AttachmentType
 from allure import step as allure_step
 @allure.manual
+@allure.suite("Evolution Compute Public API v3")
+@allure.label("priority", "P1")
 @allure.label("owner", "qa_team")
+@allure.link("https://compute.api.cloud.ru")
 @allure.feature("Evolution Compute Public API v3")
 @allure.story("Virtual Machines")
 class VMTests:
     @allure.title("Создание виртуальной машины")
     @allure.tag("CRITICAL")
     def test_create_vm_success(self) -> None:
-        with allure_step("Отправить POST /vms с валидным payload и Bearer userPlaneApiToken"):
+        with allure_step("Arrange: Подготовить валидный payload и Bearer userPlaneApiToken"):
             pass
-        with allure_step("Проверить статус-код 201 и валидный UUID в ответе"):
+        with allure_step("Act: Отправить POST /vms"):
             pass
-Дополнительно: Добавь 3–4 кейса на attach/detach Disk to VM (success + invalid UUID), 3–4 на негатив 5xx (500: server error на create/update, 502: gateway на delete).
+        with allure_step("Assert: Статус-код 201, валидный UUID в ответе"):
+            pass
+Дополнительно: Добавь 3–4 кейса на attach/detach Disk to VM (success + invalid UUID), 3–4 на негатив 5xx (500: server error на create/update, 502: gateway на delete), и 401/403 при отсутствии/неверном токене.
 Выводи ТОЛЬКО чистый Python-код. Ничего больше. Никаких "Вот код", никаких тройных кавычек.
 ОБЯЗАТЕЛЬНО:
 - Все строковые литералы должны быть закрыты кавычками " или '
 - НИ ОДНОЙ незакрытой строки - каждая строка должна быть полностью в кавычках
 - Все скобки (), [], {} должны быть закрыты
 - Код должен проходить ast.parse() без ошибок
+
+ОТВЕТ ДОЛЖЕН БЫТЬ ТОЛЬКО В ФОРМАТЕ:
+
+@allure.manual
+@allure.suite("...")
+@allure.label("priority", "P1")
+@allure.label("owner", "qa_team")
+@allure.link("https://...")
+
+def test_xxx():
+
+    with allure_step("Arrange: ..."):
+        ...
+
+    with allure_step("Act: ..."):
+        ...
+
+    with allure_step("Assert: ..."):
+        ...

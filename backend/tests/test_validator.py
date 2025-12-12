@@ -5,10 +5,18 @@ def test_validator_accepts_valid_manual_ui():
         "import allure\n"
         "from allure import step as allure_step\n"
         "@allure.manual\n"
+        "@allure.suite(\"Test Suite\")\n"
         "@allure.label(\"owner\", \"qa_team\")\n"
+        "@allure.label(\"priority\", \"P1\")\n"
+        "@allure.link(\"https://jira.example.com\")\n"
         "class T:\n"
         "    def x(self):\n"
-        "        with allure_step(\"a\"): pass\n"
+        "        with allure_step(\"Arrange: подготовка данных\"):\n"
+        "            pass\n"
+        "        with allure_step(\"Act: нажать кнопку\"):\n"
+        "            pass\n"
+        "        with allure_step(\"Assert: проверить результат\"):\n"
+        "            pass\n"
     )
     result = validate_allure_code(code, "manual_ui")
     assert result["valid"] is True
@@ -19,9 +27,17 @@ def test_validator_accepts_owner_single_quotes():
         "import allure\n"
         "from allure import step as allure_step\n"
         "@allure.manual\n"
+        "@allure.suite('Test Suite')\n"
         "@allure.label('owner', 'qa_team')\n"
+        "@allure.label('priority', 'P1')\n"
+        "@allure.link('https://jira.example.com')\n"
         "def test_single_quotes_owner():\n"
-        "    with allure_step('step one'): pass\n"
+        "    with allure_step('Arrange: подготовка данных'):\n"
+        "        pass\n"
+        "    with allure_step('Act: нажать кнопку'):\n"
+        "        pass\n"
+        "    with allure_step('Assert: проверить результат'):\n"
+        "        pass\n"
     )
     result = validate_allure_code(code, "manual_api")
     assert result["valid"] is True
@@ -47,18 +63,21 @@ def test_validator_accepts_new_tags_free_tier():
 import allure
 from allure import step as allure_step
 @allure.manual
+@allure.suite("Калькулятор цен Cloud.ru")
 @allure.label("owner", "qa_team")
+@allure.label("priority", "P1")
+@allure.link("https://cloud.ru/price-calculator")
 @allure.feature("Калькулятор цен Cloud.ru")
 @allure.story("ConfigurationManagementTests")
 class ConfigurationManagementTests:
     @allure.title("Добавление Free Tier продукта")
     @allure.tag("HIGH")
     def test_add_free_tier_success(self) -> None:
-        with allure_step("Открыть каталог продуктов"):
+        with allure_step("Arrange: Открыть каталог продуктов"):
             pass
-        with allure_step("Выбрать Free Tier вариант Compute"):
+        with allure_step("Act: Выбрать Free Tier вариант Compute"):
             pass
-        with allure_step("Проверить добавление без стоимости"):
+        with allure_step("Assert: Проверить добавление без стоимости"):
             pass
     '''
     result = validate_allure_code(code, "manual_ui")
@@ -70,7 +89,7 @@ class ConfigurationManagementTests:
 def test_validator_skips_test_plan():
     result = validate_allure_code("steps only", "test_plan")
     assert result["valid"] is True
-    assert result["message"].startswith("Это не Python-код")
+    assert "Валидация не требуется" in result["message"] or "test_plan" in result["message"]
 
 
 def test_validator_warns_auto_missing_title():

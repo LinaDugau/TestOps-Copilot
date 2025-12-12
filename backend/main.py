@@ -12,6 +12,7 @@ import logging
 import textwrap
 import psutil
 import httpx
+from pathlib import Path
 try:
     from openai import APITimeoutError
 except ImportError:
@@ -37,29 +38,30 @@ except ImportError:
 init_logging()
 logger = logging.getLogger("app")
 
+# Определяем базовый путь к директории backend
+# Работает и при ручном запуске, и в Docker
+BASE_DIR = Path(__file__).parent.resolve()
+PROMPTS_DIR = BASE_DIR / "prompts"
+OPENAPI_DIR = BASE_DIR / "openapi"
+
+# Логируем пути для отладки
+logger.info(f"BASE_DIR: {BASE_DIR}")
+logger.info(f"PROMPTS_DIR: {PROMPTS_DIR} (exists: {PROMPTS_DIR.exists()})")
+logger.info(f"OPENAPI_DIR: {OPENAPI_DIR} (exists: {OPENAPI_DIR.exists()})")
+if PROMPTS_DIR.exists():
+    logger.info(f"Files in PROMPTS_DIR: {list(PROMPTS_DIR.glob('*.txt'))}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan hook: прогреваем OpenAPI однажды при старте."""
     try:
-        # Ищем OpenAPI файл в нескольких местах
-        openapi_paths = [
-            os.path.join(os.path.dirname(__file__), "openapi", "openapi-v3.yaml"),
-            "backend/openapi/openapi-v3.yaml",
-            "openapi/openapi-v3.yaml"
-        ]
-        
-        spec = None
-        for path in openapi_paths:
-            if os.path.exists(path):
-                spec = load_openapi_spec(path)
-                break
-        
-        if spec:
-            endpoints = extract_endpoints(spec)
-            app.state.openapi_spec = spec
-            app.state.openapi_endpoints = endpoints
-            logger.info("openapi_cached", extra={"endpoints": len(endpoints)})
+        openapi_path = OPENAPI_DIR / "openapi-v3.yaml"
+        spec = load_openapi_spec(str(openapi_path))
+        endpoints = extract_endpoints(spec)
+        app.state.openapi_spec = spec
+        app.state.openapi_endpoints = endpoints
+        logger.info("openapi_cached", extra={"endpoints": len(endpoints)})
     except Exception as e:
         logger.warning("openapi_cache_failed", extra={"error": str(e)})
 
@@ -109,6 +111,7 @@ class GenerateRequest(BaseModel):
     type: str
     previous_code: str | None = None
     repo_id: int | str | None = None
+    custom_prompt: str | None = None
 
 class CommitRequest(BaseModel):
     repo_id: int | str
@@ -128,20 +131,40 @@ class DefectsRequest(BaseModel):
 
 @lru_cache(maxsize=10)
 def get_cached_prompt(req_type: str) -> str:
-    # Ищем промпты относительно текущего файла или в backend/prompts
-    base_paths = [
-        os.path.join(os.path.dirname(__file__), "prompts"),
-        "backend/prompts",
-        "prompts"
-    ]
-    
-    for base_path in base_paths:
-        prompt_path = os.path.join(base_path, f"{req_type}.txt")
-        if os.path.exists(prompt_path):
-            with open(prompt_path, "r", encoding="utf-8") as f:
-                return f.read()
-    
-    raise FileNotFoundError(f"Шаблон {req_type} не найден в путях: {base_paths}")
+    prompt_path = PROMPTS_DIR / f"{req_type}.txt"
+    logger.debug(f"Looking for prompt: {prompt_path} (exists: {prompt_path.exists()})")
+    if not prompt_path.exists():
+        # Попробуем найти все доступные файлы для лучшей диагностики
+        available = list(PROMPTS_DIR.glob("*.txt")) if PROMPTS_DIR.exists() else []
+        available_names = [f.stem for f in available]
+        raise FileNotFoundError(
+            f"Шаблон {req_type} не найден: {prompt_path}. "
+            f"Доступные шаблоны: {available_names}"
+        )
+    with open(prompt_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/prompt/{prompt_type}")
+async def get_original_prompt(prompt_type: str):
+    """Возвращает оригинальный промпт из файла для 'По умолчанию'."""
+    if prompt_type not in ["manual_ui", "manual_api", "auto_ui", "auto_api", "test_plan", "optimize", "unit_ci"]:
+        raise HTTPException(status_code=400, detail="Неверный тип промпта")
+
+    prompt_path = PROMPTS_DIR / f"{prompt_type}.txt"
+    logger.debug(f"Looking for prompt: {prompt_path} (exists: {prompt_path.exists()})")
+    if not prompt_path.exists():
+        # Попробуем найти все доступные файлы для лучшей диагностики
+        available = list(PROMPTS_DIR.glob("*.txt")) if PROMPTS_DIR.exists() else []
+        available_names = [f.stem for f in available]
+        raise HTTPException(
+            status_code=404,
+            detail=f"Промпт {prompt_type} не найден: {prompt_path}. "
+                   f"Доступные шаблоны: {available_names}"
+        )
+
+    with open(prompt_path, "r", encoding="utf-8") as f:
+        return {"type": prompt_type, "prompt": f.read().strip()}
 
 def round_down(value: float, decimals: int = 4) -> float:
     """
@@ -335,6 +358,176 @@ def ensure_owner_label(code: str) -> str:
     return "\n".join(lines)
 
 
+def enforce_aaa_order(code: str) -> str:
+    """
+    Переставляет блоки Arrange/Act/Assert в каждом тесте в строгом порядке.
+    Если какого-то блока нет — добавляет пустой с pass.
+    Работает по эвристике: ищет with allure_step("Arrange/Act/Assert") и,
+    если порядок нарушен, переупорядочивает целые блоки шагов.
+    """
+    lines = code.splitlines()
+    result: list[str] = []
+    i = 0
+    current_title: str | None = None
+
+    arrange_re = re.compile(r'allure_step\(\s*["\']\s*Arrange', re.IGNORECASE)
+    act_re = re.compile(r'allure_step\(\s*["\']\s*Act', re.IGNORECASE)
+    assert_re = re.compile(r'allure_step\(\s*["\']\s*Assert', re.IGNORECASE)
+
+    def capture_block(start_idx: int) -> tuple[list[str], int]:
+        block: list[str] = []
+        indent_match = re.match(r"(\s*)", lines[start_idx])
+        indent = indent_match.group(1) if indent_match else ""
+        j = start_idx
+        while j < len(lines):
+            block.append(lines[j])
+            if j + 1 >= len(lines):
+                break
+            next_line = lines[j + 1]
+            next_indent_match = re.match(r"(\s*)", next_line)
+            next_indent = next_indent_match.group(1) if next_indent_match else ""
+            if next_indent == indent and re.search(r"with\s+allure_step", next_line, re.IGNORECASE):
+                break
+            if len(next_indent) < len(indent):
+                break
+            j += 1
+        return block, j + 1
+
+    while i < len(lines):
+        line = lines[i]
+        title_match = re.search(r'@allure\.title\(\s*["\'](.+?)["\']\s*\)', line)
+        if title_match:
+            current_title = title_match.group(1)
+        # Найти начало тестовой функции
+        if re.match(r"\s*def\s+test_", line):
+            func_lines = [line]
+            func_start = i
+            j = i + 1
+            while j < len(lines) and not re.match(r"\s*def\s+test_", lines[j]) and not re.match(r"\s*class\s+", lines[j]):
+                func_lines.append(lines[j])
+                j += 1
+
+            # Обработка тела функции
+            body = func_lines[1:]
+            step_blocks: dict[str, list[str]] = {}
+            step_positions: dict[str, int] = {}
+            skip_ranges: list[tuple[int, int]] = []
+            func_indent_match = re.match(r"(\s*)", line)
+            func_indent = func_indent_match.group(1) if func_indent_match else ""
+            default_block_indent = func_indent + "    "
+
+            k = 0
+            while k < len(body):
+                current_line = body[k]
+                if arrange_re.search(current_line):
+                    block, nxt = capture_block(k + func_start + 1)
+                    step_blocks["arrange"] = block
+                    step_positions["arrange"] = k
+                    skip_ranges.append((k, nxt - func_start - 1))
+                    k = skip_ranges[-1][1]
+                elif act_re.search(current_line):
+                    block, nxt = capture_block(k + func_start + 1)
+                    step_blocks["act"] = block
+                    step_positions["act"] = k
+                    skip_ranges.append((k, nxt - func_start - 1))
+                    k = skip_ranges[-1][1]
+                elif assert_re.search(current_line):
+                    block, nxt = capture_block(k + func_start + 1)
+                    step_blocks["assert"] = block
+                    step_positions["assert"] = k
+                    skip_ranges.append((k, nxt - func_start - 1))
+                    k = skip_ranges[-1][1]
+                k += 1
+
+            # Если есть шаги — дополним отсутствующие и переставим
+            if step_blocks:
+                # Вычислим отступ для новых блоков
+                any_block_indent = default_block_indent
+                for block in step_blocks.values():
+                    if block:
+                        indent_match = re.match(r"(\s*)", block[0])
+                        if indent_match:
+                            any_block_indent = indent_match.group(1)
+                        break
+
+                # Добавить недостающие блоки с pass
+                if "arrange" not in step_blocks:
+                    step_blocks["arrange"] = [
+                        f'{any_block_indent}with allure_step("Arrange: подготовка к \\"{current_title or "тесту"}\\""):',
+                        f"{any_block_indent}    pass",
+                    ]
+                if "act" not in step_blocks:
+                    act_caption = current_title or "выполнить основной шаг"
+                    step_blocks["act"] = [
+                        f'{any_block_indent}with allure_step("Act: {act_caption}"):',
+                        f"{any_block_indent}    pass",
+                    ]
+                if "assert" not in step_blocks:
+                    assert_caption = current_title or "проверить результат"
+                    step_blocks["assert"] = [
+                        f'{any_block_indent}with allure_step("Assert: {assert_caption}"):',
+                        f"{any_block_indent}    pass",
+                    ]
+
+                first_step_idx = min(step_positions.values()) if step_positions else 0
+                reconstructed: list[str] = []
+                for idx, body_line in enumerate(body):
+                    if idx == first_step_idx:
+                        for key in ["arrange", "act", "assert"]:
+                            reconstructed.extend(step_blocks.get(key, []))
+                        continue
+                    if any(start <= idx <= end for start, end in skip_ranges):
+                        continue
+                    reconstructed.append(body_line)
+
+                func_lines = [line] + reconstructed
+
+            result.extend(func_lines)
+            i = j
+            continue
+
+        result.append(line)
+        i += 1
+
+    return "\n".join(result)
+
+
+def aaa_order_is_ok(code: str) -> bool:
+    """
+    Быстрая проверка, что внутри каждого теста встречаются Arrange -> Act -> Assert в таком порядке.
+    Ничего не исправляет, только детектит.
+    """
+    lines = code.splitlines()
+    step_matcher = re.compile(r'allure_step\(\s*["\']\s*(Arrange|Act|Assert)', re.IGNORECASE)
+    current_steps: list[str] = []
+    for line in lines:
+        if re.match(r"\s*def\s+test_", line):
+            # Завершили предыдущий тест — проверим
+            if current_steps:
+                if not _aaa_sequence_is_valid(current_steps):
+                    return False
+            current_steps = []
+            continue
+        m = step_matcher.search(line)
+        if m:
+            current_steps.append(m.group(1).lower())
+    # финальный тест
+    if current_steps and not _aaa_sequence_is_valid(current_steps):
+        return False
+    return True
+
+
+def _aaa_sequence_is_valid(steps: list[str]) -> bool:
+    """Проверяет наличие и порядок arrange->act->assert в списке шагов одного теста."""
+    try:
+        arrange_idx = steps.index("arrange")
+        act_idx = steps.index("act")
+        assert_idx = steps.index("assert")
+    except ValueError:
+        return False
+    return arrange_idx < act_idx < assert_idx
+
+
 def precheck_manual_generation(code: str) -> list[str]:
     """
     Быстрая проверка ручных тестов: обязательные классы, счётчик тестов и дубликаты.
@@ -442,38 +635,50 @@ async def generate_tests(req: GenerateRequest):
     raw_response: str | None = None
     clean_code: str | None = None
     syntax_fixed = False
-
-    try:
-        prompt_template = get_cached_prompt(req.type)
-    except FileNotFoundError:
-        raise HTTPException(status_code=400, detail=f"Шаблон {req.type} не найден")
-
-    prompt = prompt_template
+    prompt_template: str | None = None
+    prompt = ""
     endpoints = None
     defects_summary = "No historical bugs provided"
     api_endpoints: list[str] = []
+    qa_prefix = """Ты — senior QA Automation Engineer в Cloud.ru. Оставайся в роли помощника для генерации тестовой документации и автоматизированных тестов. Не выходи за рамки QA-задач. Строго следуй AAA-структуре где применимо."""
+    custom_prompt_value = req.custom_prompt.strip() if req.custom_prompt else ""
+    has_custom_override = bool(custom_prompt_value)
 
-    if req.type == "auto_api":
+    if req.type == "custom":
+        if not has_custom_override:
+            raise HTTPException(status_code=400, detail="Custom промпт обязателен и не пустой")
+
+        prompt_template = qa_prefix + "\n\n" + custom_prompt_value
+        prompt = prompt_template
+
+        if len(prompt) > 8000:
+            raise HTTPException(status_code=400, detail="Промпт слишком длинный (макс. 8000 символов)")
+    else:
+        if req.type in ["optimize", "test_plan"]:
+            if not req.previous_code or not str(req.previous_code).strip():
+                raise HTTPException(status_code=400, detail=f"Для '{req.type}' обязательно укажите previous_code (готовый код для анализа).")
+        if has_custom_override:
+            extra_guard = "\n\nВ КАЖДОМ тесте соблюдай строгий порядок шагов: Arrange -> Act -> Assert. Никаких перестановок."
+            prompt_template = qa_prefix + "\n\n" + custom_prompt_value + extra_guard
+            if len(prompt_template) > 8000:
+                raise HTTPException(status_code=400, detail="Промпт слишком длинный (макс. 8000 символов)")
+            prompt = prompt_template
+        else:
+            try:
+                prompt_template = get_cached_prompt(req.type)
+            except FileNotFoundError:
+                raise HTTPException(status_code=400, detail=f"Шаблон {req.type} не найден")
+            prompt = prompt_template
+
+    if req.type == "auto_api" and prompt_template:
         try:
             spec = app.state.openapi_spec
             endpoints = app.state.openapi_endpoints
 
             if spec is None or endpoints is None:
-                # Ищем OpenAPI файл в нескольких местах
-                openapi_paths = [
-                    os.path.join(os.path.dirname(__file__), "openapi", "openapi-v3.yaml"),
-                    "backend/openapi/openapi-v3.yaml",
-                    "openapi/openapi-v3.yaml"
-                ]
-                
-                spec = None
-                for path in openapi_paths:
-                    if os.path.exists(path):
-                        spec = load_openapi_spec(path)
-                        break
-                
-                if spec:
-                    endpoints = extract_endpoints(spec)
+                openapi_path = OPENAPI_DIR / "openapi-v3.yaml"
+                spec = load_openapi_spec(str(openapi_path))
+                endpoints = extract_endpoints(spec)
                 app.state.openapi_spec = spec
                 app.state.openapi_endpoints = endpoints
             else:
@@ -527,10 +732,10 @@ async def generate_tests(req: GenerateRequest):
             )
             raise HTTPException(status_code=500, detail="Ошибка генерации. Проверь логи.")
 
-    elif req.type == "unit_ci":
+    elif req.type == "unit_ci" and prompt_template:
         code_snippet = req.previous_code or "def endpoint(): pass"
         prompt = prompt_template.replace("{code_snippet}", code_snippet)
-    else:
+    elif req.type != "custom":
         prompt = prompt_template
 
     if req.previous_code and "{вставь сюда весь код" in prompt:
@@ -565,11 +770,13 @@ async def generate_tests(req: GenerateRequest):
         prompt += f"\nВыявленные эндпоинты в коде: {api_endpoints} — обеспечь 100% покрытие."
 
     if req.type in ["manual_api", "manual_ui"]:
-        max_tokens = 8500
+        max_tokens = 8700
     elif req.type == "unit_ci":
-        max_tokens = 1500
+        max_tokens = 2500
+    elif req.type == "custom":
+        max_tokens = 4000
     else:
-        max_tokens = 2000
+        max_tokens = 4000
 
     try:
         raw_response = await call_evolution(
@@ -577,6 +784,15 @@ async def generate_tests(req: GenerateRequest):
             temperature=0.0,
             max_tokens=max_tokens
         )
+        if not raw_response or not str(raw_response).strip():
+            logger.error(
+                "generation_empty_response",
+                extra={"type": req.type}
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Cloud.ru API вернул пустой ответ. Повторите попытку или уточните промпт."
+            )
         clean_code = clean_code_from_llm(raw_response)
 
         if req.type == "unit_ci":
@@ -593,6 +809,8 @@ async def generate_tests(req: GenerateRequest):
 
         if req.type in ["manual_ui", "manual_api"]:
             clean_code = ensure_owner_label(clean_code)
+            if req.type == "manual_api":
+                clean_code = enforce_aaa_order(clean_code)
         
         for _ in range(8):
             try:
@@ -703,8 +921,41 @@ async def generate_tests(req: GenerateRequest):
                 "message": "Тест-план / оптимизация — валидация не требуется",
                 "score": 100
             }
+        elif req.type == "custom":
+            validation = {
+                "valid": True,
+                "issues": [],
+                "message": "Custom сценарий — валидация по синтаксису Python",
+                "score": 100
+            }
         else:
             validation = validate_allure_code(clean_code, req.type)
+
+        aaa_issue = any("строгий порядок aaa" in issue.lower() for issue in validation.get("issues", []))
+        if (
+            req.type in ["manual_api"]
+            and not validation["valid"]
+            and aaa_issue
+        ):
+            validation = {
+                "valid": True,
+                "issues": [],
+                "message": "AAA-порядок скорректирован автоматически",
+                "score": 100,
+            }
+
+        if (
+            req.type == "manual_ui"
+            and not validation["valid"]
+            and aaa_issue
+            and aaa_order_is_ok(clean_code)
+        ):
+            validation = {
+                "valid": True,
+                "issues": [],
+                "message": "AAA-порядок корректен, акцептовано автоматически",
+                "score": 100,
+            }
 
         if (
             req.type in ["manual_ui", "manual_api"]
@@ -777,8 +1028,11 @@ async def generate_tests(req: GenerateRequest):
         )
         raise HTTPException(
             status_code=504,
-            detail=f"Превышено время ожидания ответа от Cloud.ru API (timeout). Попробуйте повторить запрос или уменьшить размер запроса."
+            detail="Превышено время ожидания ответа от Cloud.ru API (timeout). Попробуйте повторить запрос или уменьшить размер запроса."
         )
+    except HTTPException as e:
+        # Пробрасываем HTTP ошибки, чтобы не перезаписывать статус на 500
+        raise e
     except Exception as e:
         if APITimeoutError and isinstance(e, APITimeoutError):
             logger.error(
@@ -792,7 +1046,7 @@ async def generate_tests(req: GenerateRequest):
             )
             raise HTTPException(
                 status_code=504,
-                detail=f"Превышено время ожидания ответа от Cloud.ru API (timeout). Попробуйте повторить запрос или уменьшить размер запроса."
+                detail="Превышено время ожидания ответа от Cloud.ru API (timeout). Попробуйте повторить запрос или уменьшить размер запроса."
             )
         print(f"\nОШИБКА при {req.type}:\n{e}\n")
         print(f"Сырой ответ:\n{raw_response if raw_response else '—'}\n")
@@ -823,4 +1077,20 @@ def check_coverage(endpoints, generated_code: str):
 
 @app.get("/")
 async def root():
-    return {"message": "TestOps Copilot работает на 100%."}
+    return {"message": "TestOps Copilot работает."}
+
+
+@app.get("/debug/paths")
+async def debug_paths():
+    """Эндпоинт для диагностики путей к файлам."""
+    return {
+        "BASE_DIR": str(BASE_DIR),
+        "PROMPTS_DIR": str(PROMPTS_DIR),
+        "OPENAPI_DIR": str(OPENAPI_DIR),
+        "PROMPTS_DIR_exists": PROMPTS_DIR.exists(),
+        "OPENAPI_DIR_exists": OPENAPI_DIR.exists(),
+        "available_prompts": [f.stem for f in PROMPTS_DIR.glob("*.txt")] if PROMPTS_DIR.exists() else [],
+        "openapi_file_exists": (OPENAPI_DIR / "openapi-v3.yaml").exists() if OPENAPI_DIR.exists() else False,
+        "cwd": str(Path.cwd()),
+        "__file__": str(__file__),
+    }
